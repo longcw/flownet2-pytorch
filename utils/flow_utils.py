@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 TAG_CHAR = np.array([202021.25], np.float32)
 
@@ -53,3 +54,18 @@ def writeFlow(filename,uv,v=None):
     tmp[:,np.arange(width)*2 + 1] = v
     tmp.astype(np.float32).tofile(f)
     f.close()
+
+
+def plot_flow(flow):
+
+    # Use Hue, Saturation, Value colour model
+    h, w = flow.shape[:2]
+    hsv = np.zeros([h, w, 3], dtype=np.uint8)
+    hsv[..., 1] = 255
+
+    mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    return bgr

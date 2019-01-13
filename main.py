@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from tensorboardX import SummaryWriter
+import cv2
 
 import argparse, os, sys, subprocess
 import setproctitle, colorama
@@ -380,6 +381,9 @@ if __name__ == '__main__':
                 for i in range(args.inference_batch_size):
                     _pflow = output[i].data.cpu().numpy().transpose(1, 2, 0)
                     flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
+                    # im2show = flow_utils.plot_flow(_pflow)
+                    # cv2.imshow('test', im2show)
+                    # cv2.waitKey(1)
 
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
             progress.update(1)
