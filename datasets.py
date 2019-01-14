@@ -4,6 +4,7 @@ import torch.utils.data as data
 import os, math, random
 from os.path import *
 import numpy as np
+import cv2
 
 from glob import glob
 import utils.frame_utils as frame_utils
@@ -339,6 +340,35 @@ class ChairsSDHomTest(ChairsSDHom):
                                               replicates=replicates)
 
 
+def _factor_closest(num, factor, is_ceil=True):
+    num = float(num) / factor
+    num = np.ceil(num) if is_ceil else np.floor(num)
+    return int(num) * factor
+
+
+def crop_with_factor(im, dest_size, factor=32, pad_val=0, basedon='min'):
+    im_size_min, im_size_max = np.min(im.shape[0:2]), np.max(im.shape[0:2])
+    im_base = {'min': im_size_min,
+               'max': im_size_max,
+               'w': im.shape[1],
+               'h': im.shape[0]}
+    im_scale = float(dest_size) / im_base.get(basedon, im_size_min)
+
+    # Scale the image.
+    im = cv2.resize(im, None, fx=im_scale, fy=im_scale)
+
+    # Compute the padded image shape. Ensure it's divisible by factor.
+    h, w = im.shape[:2]
+    new_h, new_w = _factor_closest(h, factor), _factor_closest(w, factor)
+    new_shape = [new_h, new_w] if im.ndim < 3 else [new_h, new_w, im.shape[-1]]
+
+    # Pad the image.
+    im_padded = np.full(new_shape, fill_value=pad_val, dtype=im.dtype)
+    im_padded[0:h, 0:w] = im
+
+    return im_padded, im_scale, im.shape
+
+
 class ImagesFromFolder(data.Dataset):
     def __init__(self, args, is_cropped, root='/path/to/frames/only/folder', iext='jpg', replicates=1):
         self.args = args
@@ -356,12 +386,14 @@ class ImagesFromFolder(data.Dataset):
 
         self.size = len(self.image_list)
 
-        self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
-
-        if (self.render_size[0] < 0) or (self.render_size[1] < 0) or (self.frame_size[0] % 64) or (
-                self.frame_size[1] % 64):
-            self.render_size[0] = ((self.frame_size[0]) // 64) * 64
-            self.render_size[1] = ((self.frame_size[1]) // 64) * 64
+        frame = frame_utils.read_gen(self.image_list[0][0])
+        if min(frame.shape[0:2]) > 720:
+            real_inp_size = 640
+        else:
+            real_inp_size = 448
+        self.dst_size = real_inp_size
+        frame_pad, self.im_scale, self.frame_shape = crop_with_factor(frame, self.dst_size, factor=64, basedon='min')
+        self.render_size = frame_pad.shape[:2]
 
         args.inference_size = self.render_size
 
@@ -371,21 +403,21 @@ class ImagesFromFolder(data.Dataset):
         img1 = frame_utils.read_gen(self.image_list[index][0])
         img2 = frame_utils.read_gen(self.image_list[index][1])
 
-        images = [img1, img2]
-        image_size = img1.shape[:2]
-        if self.is_cropped:
-            cropper = StaticRandomCrop(image_size, self.crop_size)
-        else:
-            cropper = StaticCenterCrop(image_size, self.render_size)
-        images = list(map(cropper, images))
+        cropped_images = []
+        for image in [img1, img2]:
+            cropped_images.append(crop_with_factor(image, self.dst_size, 64, basedon='min')[0])
 
-        images = np.array(images).transpose(3, 0, 1, 2)
+        images = np.array(cropped_images).transpose(3, 0, 1, 2)
         images = torch.from_numpy(images.astype(np.float32))
 
         return [images], [torch.zeros(images.size()[0:1] + (2,) + images.size()[-2:])]
 
     def __len__(self):
         return self.size * self.replicates
+
+    def crop_real_image(self, image):
+        h, w, = self.frame_shape[:2]
+        return image[0:h, 0:w]
 
 
 '''

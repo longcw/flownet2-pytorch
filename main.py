@@ -341,6 +341,7 @@ if __name__ == '__main__':
     def inference(args, epoch, data_loader, model, offset=0):
 
         model.eval()
+        dataset = data_loader.dataset
         
         if args.save_flow or args.render_validation:
             flow_folder = "{}/inference/{}.epoch-{}-flow-field".format(args.save,args.name.replace('/', '.'),epoch)
@@ -379,6 +380,7 @@ if __name__ == '__main__':
             if args.save_flow or args.render_validation:
                 for i in range(args.inference_batch_size):
                     _pflow = output[i].data.cpu().numpy().transpose(1, 2, 0)
+                    _pflow = dataset.crop_real_image(_pflow)
                     flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
                     # im2show = flow_utils.plot_flow(_pflow)
                     # cv2.imshow('test', im2show)
